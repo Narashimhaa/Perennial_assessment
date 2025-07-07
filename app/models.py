@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.postgresql import ARRAY
+
 
 
 Base = declarative_base()
