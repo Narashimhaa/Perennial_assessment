@@ -1,0 +1,489 @@
+openapi: 3.0.3
+info:
+  title: Employee Search API
+  description: |
+    A FastAPI-based employee search service with PostgreSQL backend, featuring rate limiting and configurable column visibility per organization.
+    
+    ## Features
+    - **Employee Search**: Full-text search across employee records
+    - **Filtering**: Filter by status, location, department, and position
+    - **Rate Limiting**: Built-in rate limiting (5 requests per minute per IP)
+    - **Organization Configuration**: Configurable visible columns per organization
+    - **Pagination**: Offset-based pagination support
+    
+    ## Rate Limiting
+    The API implements rate limiting to prevent abuse:
+    - **Limit**: 5 requests per minute per IP address
+    - **Response**: HTTP 429 when limit exceeded
+    
+    ## Organization Data Structure
+    The system supports multiple organizations with configurable column visibility:
+    - **Org 1**: `first_name`, `last_name`, `department`, `position`
+    - **Org 2**: `first_name`, `email`, `phone`, `location`
+    - **Org 3**: `first_name`, `last_name`, `department`, `location`, `position`
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: Search
+    description: Employee search and filtering operations
+
+paths:
+  /search/:
+    get:
+      tags:
+        - Search
+      summary: Search Employees
+      description: |
+        Search and filter employees within an organization with full-text search capabilities.
+        
+        **Search Behavior:**
+        - Text search (`q` parameter): Case-insensitive partial matching across first_name, last_name, email, phone
+        - Filter behavior: Multiple values for same filter = OR logic, Different filters = AND logic
+        
+        **Performance:**
+        - Database includes indexes on commonly filtered fields
+        - Org-based queries are highly optimized
+        - Use pagination for large result sets
+      operationId: searchEmployees
+      parameters:
+        - name: org_id
+          in: query
+          required: true
+          description: Organization ID (1, 2, or 3)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3
+            example: 1
+        - name: q
+          in: query
+          required: false
+          description: Search query (searches across first_name, last_name, email, phone)
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+            example: "alice"
+        - name: status
+          in: query
+          required: false
+          description: Filter by employee status (can specify multiple values)
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [ACTIVE, NOT_STARTED, TERMINATED]
+            example: ["ACTIVE", "NOT_STARTED"]
+        - name: locations
+          in: query
+          required: false
+          description: Filter by office locations (can specify multiple values)
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: ["New York", "San Francisco", "Berlin", "London", "Chennai"]
+            example: ["New York", "San Francisco"]
+        - name: departments
+          in: query
+          required: false
+          description: Filter by departments (can specify multiple values)
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [Engineering, Marketing, Sales, HR, Support]
+            example: ["Engineering", "Marketing"]
+        - name: positions
+          in: query
+          required: false
+          description: Filter by job positions (can specify multiple values)
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [Manager, Developer, Analyst, Intern, Executive]
+            example: ["Manager", "Developer"]
+        - name: limit
+          in: query
+          required: false
+          description: Number of results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+            example: 10
+        - name: offset
+          in: query
+          required: false
+          description: Pagination offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+            example: 0
+      responses:
+        '200':
+          description: Successful response with employee list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Employee'
+              examples:
+                org1_response:
+                  summary: Organization 1 Response
+                  description: Response for organization 1 with visible columns
+                  value:
+                    - first_name: "Alice"
+                      last_name: "Smith"
+                      department: "Engineering"
+                      position: "Manager"
+                    - first_name: "Bob"
+                      last_name: "Johnson"
+                      department: "Engineering"
+                      position: "Developer"
+                org2_response:
+                  summary: Organization 2 Response
+                  description: Response for organization 2 with different visible columns
+                  value:
+                    - first_name: "Carol"
+                      email: "carol.williams@example.com"
+                      phone: "+1-555-0103"
+                      location: "Berlin"
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Organization config not found"
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Too many requests"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Database connection failed"
+
+  /search/filters/metadata:
+    get:
+      tags:
+        - Search
+      summary: Get Filter Metadata
+      description: |
+        Retrieve all available filter options for an organization.
+
+        This endpoint returns the distinct values for each filterable field within the specified organization,
+        which can be used to populate filter dropdowns or validate filter parameters.
+
+        **Caching Recommendation:** Cache these responses as they change infrequently.
+      operationId: getFilterMetadata
+      parameters:
+        - name: org_id
+          in: query
+          required: true
+          description: Organization ID
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3
+            example: 1
+      responses:
+        '200':
+          description: Successful response with filter metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterMetadata'
+              example:
+                statuses: ["ACTIVE", "NOT_STARTED", "TERMINATED"]
+                locations: ["New York", "San Francisco", "Berlin", "London", "Chennai"]
+                departments: ["Engineering", "Marketing", "Sales", "HR", "Support"]
+                positions: ["Manager", "Developer", "Analyst", "Intern", "Executive"]
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Organization config not found"
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Too many requests"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Database connection failed"
+
+components:
+  schemas:
+    Employee:
+      type: object
+      description: |
+        Employee object with fields visible based on organization configuration.
+        Different organizations see different sets of fields.
+      properties:
+        first_name:
+          type: string
+          nullable: true
+          description: Employee's first name
+          example: "Alice"
+        last_name:
+          type: string
+          nullable: true
+          description: Employee's last name
+          example: "Smith"
+        email:
+          type: string
+          nullable: true
+          format: email
+          description: Employee's email address
+          example: "alice.smith@example.com"
+        phone:
+          type: string
+          nullable: true
+          description: Employee's phone number
+          example: "+1-555-0101"
+        department:
+          type: string
+          nullable: true
+          description: Employee's department
+          enum: [Engineering, Marketing, Sales, HR, Support]
+          example: "Engineering"
+        position:
+          type: string
+          nullable: true
+          description: Employee's job position
+          enum: [Manager, Developer, Analyst, Intern, Executive]
+          example: "Manager"
+        location:
+          type: string
+          nullable: true
+          description: Employee's office location
+          enum: ["New York", "San Francisco", "Berlin", "London", "Chennai"]
+          example: "New York"
+        avatar_url:
+          type: string
+          nullable: true
+          format: uri
+          description: URL to employee's avatar image
+          example: "https://api.dicebear.com/6.x/thumbs/svg?seed=alice"
+      additionalProperties: false
+      example:
+        first_name: "Alice"
+        last_name: "Smith"
+        email: "alice.smith@example.com"
+        department: "Engineering"
+        position: "Manager"
+
+    FilterMetadata:
+      type: object
+      description: Available filter options for an organization
+      required:
+        - statuses
+        - locations
+        - departments
+        - positions
+      properties:
+        statuses:
+          type: array
+          description: Available employee statuses
+          items:
+            type: string
+            enum: [ACTIVE, NOT_STARTED, TERMINATED]
+          example: ["ACTIVE", "NOT_STARTED", "TERMINATED"]
+        locations:
+          type: array
+          description: Available office locations
+          items:
+            type: string
+            enum: ["New York", "San Francisco", "Berlin", "London", "Chennai"]
+          example: ["New York", "San Francisco", "Berlin", "London", "Chennai"]
+        departments:
+          type: array
+          description: Available departments
+          items:
+            type: string
+            enum: [Engineering, Marketing, Sales, HR, Support]
+          example: ["Engineering", "Marketing", "Sales", "HR", "Support"]
+        positions:
+          type: array
+          description: Available job positions
+          items:
+            type: string
+            enum: [Manager, Developer, Analyst, Intern, Executive]
+          example: ["Manager", "Developer", "Analyst", "Intern", "Executive"]
+      additionalProperties: false
+
+    Error:
+      type: object
+      description: Standard error response
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Error message describing what went wrong
+          example: "Organization config not found"
+      additionalProperties: false
+
+    ValidationError:
+      type: object
+      description: Validation error response from FastAPI
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          description: List of validation errors
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                description: Location of the error in the request
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                example: ["query", "org_id"]
+              msg:
+                type: string
+                description: Error message
+                example: "field required"
+              type:
+                type: string
+                description: Error type
+                example: "value_error.missing"
+      example:
+        detail:
+          - loc: ["query", "org_id"]
+            msg: "field required"
+            type: "value_error.missing"
+
+  examples:
+    SearchBasic:
+      summary: Basic search for organization 1
+      description: Simple search without filters
+      value:
+        org_id: 1
+        limit: 10
+
+    SearchWithFilters:
+      summary: Advanced search with multiple filters
+      description: Search with text query and multiple filters
+      value:
+        org_id: 1
+        q: "alice"
+        status: ["ACTIVE", "NOT_STARTED"]
+        departments: ["Engineering", "Marketing"]
+        limit: 20
+        offset: 0
+
+    SearchPaginated:
+      summary: Paginated search
+      description: Search with pagination for large result sets
+      value:
+        org_id: 2
+        departments: ["Engineering"]
+        limit: 50
+        offset: 100
+
+  parameters:
+    OrgId:
+      name: org_id
+      in: query
+      required: true
+      description: Organization ID (1, 2, or 3)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 3
+      example: 1
+
+    SearchQuery:
+      name: q
+      in: query
+      required: false
+      description: Search query for full-text search
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+      example: "alice"
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Number of results per page (max 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+      example: 10
+
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Pagination offset
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      example: 0

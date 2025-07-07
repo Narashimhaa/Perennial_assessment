@@ -1,0 +1,45 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: perennial_db
+    environment:
+      POSTGRES_DB: assessment
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - perennial_network
+
+  # FastAPI Application
+  app:
+    build: .
+    container_name: perennial_app
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/assessment
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro  # Mount for development (optional)
+    networks:
+      - perennial_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  perennial_network:
+    driver: bridge
