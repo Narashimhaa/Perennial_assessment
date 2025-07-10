@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  app:
+    environment:
+      # Override rate limiting for testing - much more aggressive
+      RATE_LIMIT_REQUESTS: 3      # Only 3 requests allowed
+      RATE_LIMIT_WINDOW: 60       # Per 60 seconds
+      LOG_LEVEL: DEBUG            # More verbose logging for testing

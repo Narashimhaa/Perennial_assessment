@@ -6,12 +6,16 @@ A FastAPI-based employee search service with PostgreSQL backend, featuring rate 
 
 - **Employee Search**: Full-text search across employee records
 - **Filtering**: Filter by status, location, department, and position
-- **Rate Limiting**: Built-in rate limiting (5 requests per minute per IP)
+- **Rate Limiting**: Configurable rate limiting with middleware (default: 5 requests per minute per IP)
 - **Organization Configuration**: Configurable visible columns per organization
-- **Pagination**: Offset-based pagination support
+- **Pagination**: Offset-based pagination support with validation
 - **Health Checks**: Built-in health monitoring
+- **Database Migrations**: Alembic integration for schema management
+- **Input Validation**: Comprehensive Pydantic model validation
+- **Logging**: Configurable logging with structured output
+- **OpenAPI Integration**: Full OpenAPI 3.0 specification support
 
-## 🐳 Docker Containerization
+## Docker Containerization
 
 ### Quick Start with Docker Compose
 
@@ -22,15 +26,71 @@ A FastAPI-based employee search service with PostgreSQL backend, featuring rate 
    cp .env.example .env
    ```
 
-2. **Start the services**:
+2. **Configure environment (optional)**:
    ```bash
-   docker-compose up -d
+   # Edit .env file to customize settings
+   nano .env
+
+   # Key settings:
+   # RATE_LIMIT_REQUESTS=5        # Requests per minute
+   # RATE_LIMIT_WINDOW=60         # Rate limit window in seconds
+   # LOG_LEVEL=INFO               # Logging level
    ```
 
-3. **Access the API**:
+3. **Start the services**:
+   ```bash
+   docker-compose up -d --build
+   ```
+
+4. **Verify setup**:
+   ```bash
+   # Check if services are running and healthy
+   docker-compose ps
+
+   # Test the health endpoint
+   curl http://localhost:8000/health
+
+   # Test the search API
+   curl "http://localhost:8000/employees/search?org_id=1&limit=5"
+   ```
+
+5. **Access the API**:
+   - Health Check: http://localhost:8000/health
    - API Documentation: http://localhost:8000/docs
+   - OpenAPI JSON: http://localhost:8000/openapi.json
    - API Base URL: http://localhost:8000
-   - Database: localhost:5432
+   - Database: localhost:5433 (mapped from container port 5432)
+
+### Testing Docker Setup
+
+```bash
+# Run comprehensive Docker tests (uses test configuration with stricter rate limits)
+./docker-test.sh
+
+# This script will:
+# - Build and start all services with test configuration
+# - Test health endpoints
+# - Verify API functionality
+# - Test rate limiting with aggressive settings (3 requests/minute)
+# - Validate OpenAPI integration
+# - Show detailed rate limiting behavior
+```
+
+### Testing Rate Limiting Specifically
+
+```bash
+# Test rate limiter logic (unit test)
+python test_rate_limiter_unit.py
+
+# Test rate limiting against running API
+./test-rate-limiting.sh
+
+# Manual rate limiting test
+for i in {1..10}; do
+  echo "Request $i: $(curl -s -w "%{http_code}" "http://localhost:8000/employees/search?org_id=1" -o /dev/null)"
+  sleep 0.1  # Small delay between requests
+done
+```
 
 ### Development Setup
 
@@ -43,6 +103,9 @@ docker-compose logs -f app
 
 # Stop services
 docker-compose down
+
+# Reset everything (including volumes)
+docker-compose down -v --remove-orphans
 ```
 
 
@@ -77,7 +140,7 @@ docker-compose down
 └── requirements.txt       # Python dependencies
 ```
 
-## 🚀 API Documentation
+## API Documentation
 
 ### Base URL
 ```
@@ -90,17 +153,17 @@ http://localhost:8000
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### 1. Search Employees
 
-**Endpoint:** `GET /search/`
+**Endpoint:** `GET /employees/search`
 
 **Description:** Search and filter employees within an organization with full-text search capabilities.
 
 **Request Signature:**
 ```http
-GET /search/?org_id={int}&q={string}&status={array}&locations={array}&departments={array}&positions={array}&limit={int}&offset={int}
+GET /employees/search?org_id={int}&q={string}&status={array}&locations={array}&departments={array}&positions={array}&limit={int}&offset={int}
 ```
 
 **Parameters:**
@@ -136,19 +199,19 @@ GET /search/?org_id={int}&q={string}&status={array}&locations={array}&department
 
 ```bash
 # Basic search for organization 1
-curl "http://localhost:8000/search/?org_id=1"
+curl "http://localhost:8000/employees/search?org_id=1"
 
 # Search with text query
-curl "http://localhost:8000/search/?org_id=1&q=alice"
+curl "http://localhost:8000/employees/search?org_id=1&q=alice"
 
 # Filter by status
-curl "http://localhost:8000/search/?org_id=1&status=ACTIVE&status=NOT_STARTED"
+curl "http://localhost:8000/employees/search?org_id=1&status=ACTIVE&status=NOT_STARTED"
 
 # Multiple filters with pagination
-curl "http://localhost:8000/search/?org_id=1&departments=Engineering&locations=New%20York&limit=10&offset=0"
+curl "http://localhost:8000/employees/search?org_id=1&departments=Engineering&locations=New%20York&limit=10&offset=0"
 
 # Complex search
-curl "http://localhost:8000/search/?org_id=2&q=john&status=ACTIVE&departments=Engineering&departments=Marketing&limit=25"
+curl "http://localhost:8000/employees/search?org_id=2&q=john&status=ACTIVE&departments=Engineering&departments=Marketing&limit=25"
 ```
 
 **Example Response:**
@@ -202,7 +265,7 @@ GET /search/filters/metadata?org_id={int}
 
 **Example Request:**
 ```bash
-curl "http://localhost:8000/search/filters/metadata?org_id=1"
+curl "http://localhost:8000/employees/filters/metadata?org_id=1"
 ```
 
 **Example Response:**
@@ -217,7 +280,7 @@ curl "http://localhost:8000/search/filters/metadata?org_id=1"
 
 ---
 
-## 🛠️ Developer Usage Guide
+## Developer Usage Guide
 
 ### Quick Start for Developers
 
@@ -248,17 +311,55 @@ curl "http://localhost:8000/search/filters/metadata?org_id=1"
 
 ### Rate Limiting
 
-The API implements rate limiting to prevent abuse:
-- **Limit**: 5 requests per minute per IP address
-- **Response**: HTTP 429 when limit exceeded
-- **Headers**: Rate limit info in response headers
+The API implements configurable rate limiting to prevent abuse:
+- **Default Limit**: 5 requests per minute per IP address
+- **Configurable**: Set via `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW` environment variables
+- **Response**: HTTP 429 when limit exceeded with `Retry-After` header
+- **Scope**: Applied per IP address (supports proxy headers)
 
+**Configuration:**
 ```bash
-# Test rate limiting
-for i in {1..7}; do
-  echo "Request $i:"
-  curl -w "Status: %{http_code}\n" "http://localhost:8000/search/?org_id=1"
+# In .env or docker-compose.yml
+RATE_LIMIT_REQUESTS=5    # Number of requests allowed
+RATE_LIMIT_WINDOW=60     # Time window in seconds
+```
+
+**Testing Rate Limiting:**
+```bash
+# Quick test with default settings (may need 6+ rapid requests)
+for i in {1..10}; do
+  echo "Request $i: $(curl -s -w "%{http_code}" "http://localhost:8000/employees/search?org_id=1" -o /dev/null)"
 done
+
+# Comprehensive rate limiting test
+./test-rate-limiting.sh
+
+# Unit test for rate limiter logic
+python test_rate_limiter_unit.py
+```
+
+**Rate Limiting Features:**
+- ✅ Memory leak prevention with automatic cleanup
+- ✅ Failed requests count towards limit
+- ✅ Proxy-aware IP detection (X-Forwarded-For, X-Real-IP)
+- ✅ Configurable via environment variables
+- ✅ Proper HTTP 429 responses with structured JSON and retry headers
+- ✅ No internal server errors - always returns meaningful responses
+
+**Rate Limit Response Format:**
+```json
+{
+  "error": "Rate limit exceeded",
+  "message": "Too many requests. Please try again later.",
+  "detail": "Rate limit: 5 requests per 60 seconds",
+  "retry_after": 60
+}
+```
+
+**Testing Rate Limit Responses:**
+```bash
+# Test that rate limiting returns proper JSON (not 500 errors)
+python test_rate_limit_response.py
 ```
 
 ### Organization Data Structure
@@ -322,7 +423,7 @@ The system supports multiple organizations with configurable column visibility:
 
 ---
 
-## 🧪 Testing & Integration
+## Testing & Integration
 
 ### API Testing Examples
 
@@ -447,7 +548,7 @@ class EmployeeSearchClient:
 
 ---
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### Tables
 
@@ -511,6 +612,9 @@ SELECT org_id, COUNT(*) FROM employees GROUP BY org_id;
 | `POSTGRES_DB` | Database name | `assessment` |
 | `POSTGRES_USER` | Database user | `postgres` |
 | `POSTGRES_PASSWORD` | Database password | `postgres` |
+| `RATE_LIMIT_REQUESTS` | Number of requests allowed per window | `5` |
+| `RATE_LIMIT_WINDOW` | Rate limit window in seconds | `60` |
+| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 
 ### Rate Limiting
 

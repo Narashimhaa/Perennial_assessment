@@ -25,7 +25,18 @@ services:
     build: .
     container_name: perennial_app
     environment:
+      # Database Configuration
       DATABASE_URL: postgresql://postgres:postgres@db:5432/assessment
+
+      # Rate Limiting Configuration
+      RATE_LIMIT_REQUESTS: 5
+      RATE_LIMIT_WINDOW: 60
+
+      # Logging Configuration
+      LOG_LEVEL: INFO
+
+      # Application Configuration
+      ENVIRONMENT: production
     ports:
       - "8000:8000"
     depends_on:
@@ -36,6 +47,12 @@ services:
     networks:
       - perennial_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   postgres_data:

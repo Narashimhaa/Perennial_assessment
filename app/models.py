@@ -1,8 +1,12 @@
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func
-from sqlalchemy.ext.declarative import declarative_base
+import enum
+from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func, Enum
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.dialects.postgresql import ARRAY
 
-
+class EmployeeStatus(enum.Enum):
+    ACTIVE = "ACTIVE"
+    NOT_STARTED = "NOT_STARTED"
+    TERMINATED = "TERMINATED"
 
 Base = declarative_base()
 
@@ -17,7 +21,7 @@ class Employee(Base):
     department = Column(String(100))
     position = Column(String(100))
     location = Column(String(255))
-    status = Column(String(20), default="ACTIVE")
+    status = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE)
     avatar_url = Column(Text)
     created_at = Column(TIMESTAMP, default=func.now())
     updated_at = Column(TIMESTAMP, default=func.now())
