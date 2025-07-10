@@ -818,8 +818,39 @@ app/
 
 ### Testing Strategy
 
+The project includes both unit tests (with mocking) and integration tests (with real database).
+
+**Unit Tests (Fast, Mocked):**
 ```bash
-# Run all tests
+# Run unit tests with mocking (no database required)
+pytest tests/test_search.py -v
+
+# These tests use mocking and are fast:
+# - Mock database responses
+# - Test API logic without database dependencies
+# - Ideal for CI/CD pipelines
+```
+
+**Integration Tests (Slower, Real Database):**
+```bash
+# Run integration tests with real database
+pytest tests/test_integration.py -v
+
+# These tests require a running database:
+# - Test end-to-end functionality
+# - Verify database interactions
+# - Use for comprehensive testing
+```
+
+**Run All Tests:**
+```bash
+# Run all tests (unit + integration)
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=app --cov-report=html
+
+# Run tests in Docker container
 docker compose exec app python -m pytest tests/ -v
 
 # Run with coverage
