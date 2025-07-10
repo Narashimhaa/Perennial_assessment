@@ -26,7 +26,24 @@ A FastAPI-based employee search service with PostgreSQL backend, featuring rate 
    cp .env.example .env
    ```
 
-2. **Configure environment (optional)**:
+2. **Validate setup** (optional but recommended):
+   ```bash
+   # Run validation script to check prerequisites
+   ./validate-setup.sh
+
+   # This will verify:
+   # - Docker and Docker Compose are installed
+   # - Python 3 is available
+   # - All required files and directories exist
+   # - Dockerfile builds successfully
+   # - docker-compose.yml syntax is valid
+   # - Required ports (8000, 5433) are available
+
+   # Optional: Test the validation script itself
+   ./test-validate-setup.sh
+   ```
+
+3. **Configure environment (optional)**:
    ```bash
    # Edit .env file to customize settings
    nano .env
@@ -37,12 +54,12 @@ A FastAPI-based employee search service with PostgreSQL backend, featuring rate 
    # LOG_LEVEL=INFO               # Logging level
    ```
 
-3. **Start the services**:
+4. **Start the services**:
    ```bash
    docker-compose up -d --build
    ```
 
-4. **Verify setup**:
+5. **Verify setup**:
    ```bash
    # Check if services are running and healthy
    docker-compose ps
@@ -54,7 +71,7 @@ A FastAPI-based employee search service with PostgreSQL backend, featuring rate 
    curl "http://localhost:8000/employees/search?org_id=1&limit=5"
    ```
 
-5. **Access the API**:
+6. **Access the API**:
    - Health Check: http://localhost:8000/health
    - API Documentation: http://localhost:8000/docs
    - OpenAPI JSON: http://localhost:8000/openapi.json
@@ -170,14 +187,14 @@ GET /employees/search?org_id={int}&q={string}&status={array}&locations={array}&d
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `org_id` | `int` | ✅ Yes | - | Organization ID (1, 2, or 3) |
-| `q` | `string` | ❌ No | - | Search query (searches across first_name, last_name, email, phone) |
-| `status` | `array[string]` | ❌ No | - | Filter by employee status |
-| `locations` | `array[string]` | ❌ No | - | Filter by office locations |
-| `departments` | `array[string]` | ❌ No | - | Filter by departments |
-| `positions` | `array[string]` | ❌ No | - | Filter by job positions |
-| `limit` | `int` | ❌ No | `50` | Number of results per page (max: 100) |
-| `offset` | `int` | ❌ No | `0` | Pagination offset |
+| `org_id` | `int` |   Yes | - | Organization ID (1, 2, or 3) |
+| `q` | `string` |   No | - | Search query (searches across first_name, last_name, email, phone) |
+| `status` | `array[string]` |   No | - | Filter by employee status |
+| `locations` | `array[string]` |   No | - | Filter by office locations |
+| `departments` | `array[string]` |   No | - | Filter by departments |
+| `positions` | `array[string]` |   No | - | Filter by job positions |
+| `limit` | `int` |   No | `50` | Number of results per page (max: 100) |
+| `offset` | `int` |   No | `0` | Pagination offset |
 
 **Response Schema:**
 ```json
@@ -251,7 +268,7 @@ GET /search/filters/metadata?org_id={int}
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `org_id` | `int` | ✅ Yes | Organization ID |
+| `org_id` | `int` |   Yes | Organization ID |
 
 **Response Schema:**
 ```json
@@ -339,12 +356,12 @@ python test_rate_limiter_unit.py
 ```
 
 **Rate Limiting Features:**
-- ✅ Memory leak prevention with automatic cleanup
-- ✅ Failed requests count towards limit
-- ✅ Proxy-aware IP detection (X-Forwarded-For, X-Real-IP)
-- ✅ Configurable via environment variables
-- ✅ Proper HTTP 429 responses with structured JSON and retry headers
-- ✅ No internal server errors - always returns meaningful responses
+-  Memory leak prevention with automatic cleanup
+-  Failed requests count towards limit
+-  Proxy-aware IP detection (X-Forwarded-For, X-Real-IP)
+-  Configurable via environment variables
+-  Proper HTTP 429 responses with structured JSON and retry headers
+-  No internal server errors - always returns meaningful responses
 
 **Rate Limit Response Format:**
 ```json
@@ -620,7 +637,7 @@ SELECT org_id, COUNT(*) FROM employees GROUP BY org_id;
 
 The API implements rate limiting (5 requests per minute per IP). This can be configured in `app/rate_limiter.py`.
 
-## 🧪 Testing
+##  Testing
 
 ### Run Tests with Docker
 
@@ -642,7 +659,7 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-## 🔒 Security Features
+##  Security Features
 
 - **Rate Limiting**: Prevents API abuse
 - **Non-root User**: Container runs as non-privileged user
@@ -650,7 +667,7 @@ pytest tests/ -v
 - **Input Validation**: Pydantic schema validation
 - **SQL Injection Protection**: SQLAlchemy ORM prevents SQL injection
 
-## 📊 Monitoring & Health Checks
+##  Monitoring & Health Checks
 
 ### Health Check Endpoint
 ```http
@@ -674,7 +691,7 @@ docker compose logs -f nginx
 
 
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -846,6 +863,12 @@ pytest tests/test_integration.py -v
 ```bash
 # Run all tests (unit + integration)
 pytest tests/ -v
+
+# Run only unit tests (using markers)
+pytest -m unit
+
+# Run only integration tests (using markers)
+pytest -m integration
 
 # Run with coverage
 pytest tests/ --cov=app --cov-report=html

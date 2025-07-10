@@ -5,7 +5,7 @@ Run with: pytest tests/test_search.py -v
 """
 
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from app.main import app
 from app.routers.search import get_db
 import pytest
